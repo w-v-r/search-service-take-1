@@ -2,6 +2,26 @@
 
 This document captures key architectural decisions baked into v0 and their rationale.
 
+## 0. This is a Harness, Not an Agent
+
+**Decision:** The search service is a **search harness** -- a structured, opinionated framework for iterated search. It is explicitly not an agent.
+
+**Rationale:** An agent implies open-ended autonomy, unpredictable latency, and opaque reasoning. A harness implies bounded behavior, low latency, and a predictable execution model. The product value comes from good structure and good opinions about how to navigate search under uncertainty, not from giving an LLM free rein. The harness ties together the index, backend adapter, and LLM interaction into a coherent, observable pipeline. The LLM is a component inside the harness, not the driver of it.
+
+**Implication:** Every design choice should optimize for harness qualities: predictability, speed, observability, and developer control.
+
+## 0.1 Opinionated Defaults, Out-of-the-Box Excellence
+
+**Decision:** The harness ships with strong opinions that produce excellent search out of the box. Flexibility exists as escape hatches, not as the default posture.
+
+**Rationale:** Developers adopting this SDK should get dramatically better search with minimal configuration. The opinions (bounded iterations, structured follow-up, original query preservation, traces by default) are the product. If everything is configurable and nothing is defaulted, the harness has no point of view. The goal is: plug in your index, run a search, and immediately see the difference.
+
+## 0.2 Iterated Search is the Core Mechanism
+
+**Decision:** The primary mechanism is **iterated search** -- the harness can take multiple bounded steps toward the right answer, rather than relying on a single retrieval pass.
+
+**Rationale:** Simple retrieval always falls short. Queries are underspecified, ambiguous, or mix content terms with metadata constraints. A single search call cannot solve this. The insight is that with good structure and good opinions, you can go much further: detect what's missing, extract structure, add filters, branch, and converge. This is what makes the harness valuable. The LLM, the backend, the adapter -- those are necessary components, but iterated search is what ties them together into something meaningfully better than one-shot retrieval.
+
 ## 1. Typesense as the First Backend Adapter
 
 **Decision:** Ship Typesense as the first real backend adapter.

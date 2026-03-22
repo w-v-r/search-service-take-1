@@ -1,25 +1,32 @@
 # Search Service v0
 
-A Python-first search orchestration SDK that sits on top of existing structured search backends and adds LLM-powered query understanding, iterative search, and ambiguity handling.
+Simple retrieval disappoints. Queries are underspecified, ambiguous, or both -- and single-shot search just shrugs and returns whatever it finds.
 
-This is **not** a new vector database or search engine. It is a **search harness** that turns an ordinary index into a guided search experience for humans and applications.
+This SDK is a **search harness**: an opinionated, low-latency framework that wraps an existing search backend and **iterates toward the right answer**. It detects ambiguity, extracts structure, asks follow-up questions when they matter, and takes bounded additional search steps -- all while preserving the original query and surfacing every decision as a trace.
+
+Inside the harness: an index, a backend adapter, LLM-powered query understanding. But those are components. The harness is the logic that ties them together -- the structure and opinions that let you go much further with search than simple retrieval ever could.
+
+This is **not an agent**. It is a harness. Bounded, predictable, fast.
 
 ## Product Thesis
 
-Most search systems treat retrieval as a single request-response action. This service treats search as a **decision process under uncertainty**:
+Most search queries against structured business data are underspecified. Users say *"show me Telstra stuff"* and mean something precise -- but the system has to figure out what.
 
-- Understand the user query
-- Detect when it is underspecified or ambiguous
-- Extract structured signals from natural language
+This SDK treats search as a **decision process under uncertainty**:
+
+- Detect when a query is ambiguous or underspecified
+- Extract structured signals (entities, filters, intent) from natural language
 - Run the best possible first search
-- Decide whether to stop, ask a follow-up question, or perform another search step
-- Preserve the original query and surface the reasoning/traces to the developer
+- Decide whether to stop, ask a structured follow-up, or take another bounded search step
+- **Always preserve the original query** and surface the full reasoning trace to the developer
+
+The differentiator is not the retrieval and not the LLM -- it is the **iterated search** that navigates uncertainty, asks for clarification when it matters, and never silently discards the user's original intent.
 
 ### Interaction Modes
 
-**HITL (Human in the Loop)** -- The system detects ambiguity or missing structure and returns a structured follow-up request to the application. The application can render this however it wants.
+**HITL (Human in the Loop)** -- When ambiguity is material, the system returns a structured follow-up request (`needs_input`) with a schema the application can render however it wants. The search service returns structure, not UI.
 
-**AITL (AI in the Loop)** -- The system is allowed to take a small number of additional search actions autonomously: retry, add filters, branch once, and merge results.
+**AITL (AI in the Loop)** -- The system takes a small, bounded number of additional search actions autonomously: add filters from extracted structure, branch once, merge results. Max 2-3 iterations, max 2 branches, original query path always preserved.
 
 ## Target Users
 
@@ -63,15 +70,15 @@ if result.status == "needs_input":
 ### In scope
 
 - Python SDK
-- Structured search only
-- Existing backend wrapped via adapter (Typesense first)
+- Structured search only (existing backend wrapped via adapter, Typesense first)
 - Keyword + filters retrieval
+- Ambiguity detection and underspecified query handling
 - Query analysis and classification
-- Entity extraction / structured input extraction
-- HITL flow via `needs_input` responses
-- AITL flow with bounded multi-step retries
-- Branch-and-merge search in limited form
-- Transparent traces and debugging output
+- Entity extraction and structured filter proposal
+- HITL flow: structured follow-up via `needs_input` responses
+- AITL flow: bounded iterative search with branch-and-merge (max 2-3 iterations, max 2 branches)
+- Original query preservation across all branches and iterations
+- Transparent traces capturing every decision step
 - Opinionated defaults with escape hatches
 
 ### Out of scope
@@ -86,13 +93,13 @@ if result.status == "needs_input":
 
 ## Architecture
 
-The system is layered so that orchestration is independent from the underlying backend:
+The system is layered so that the orchestration logic (where the product value lives) is independent from the underlying search backend:
 
-1. **SDK Layer** -- Developer-facing Python API (client, index, search, trace)
-2. **Orchestration Layer** -- Query analysis, classification, planning, iteration, follow-up generation
+1. **SDK Layer** -- Developer-facing Python API (client, index, search, continue_search, trace)
+2. **Orchestration Layer** -- Ambiguity detection, query understanding, search planning, iteration control, follow-up generation, stopping decisions
 3. **Adapter Layer** -- Backend abstraction (Typesense, in-memory, future adapters)
-4. **Model Layer** -- LLM providers for classification, extraction, and planning
-5. **Trace / Telemetry Layer** -- Step-level observability and debugging
+4. **Model Layer** -- LLM providers for classification, extraction, and planning decisions
+5. **Trace / Telemetry Layer** -- Step-level observability capturing every decision in the search process
 
 ## Development
 
