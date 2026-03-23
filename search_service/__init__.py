@@ -13,6 +13,8 @@ from search_service.exceptions import (
     TraceNotFoundError,
 )
 from search_service.indexes.base import SearchIndex
+from search_service.models.llm import ClassificationResult, ExtractionResult, ModelProvider
+from search_service.orchestration.analyzer import QueryAnalyzer
 from search_service.schemas.config import ConfidenceThresholds, IndexConfig, SearchPolicy
 from search_service.schemas.enums import (
     AmbiguityLevel,
@@ -58,6 +60,12 @@ __all__ = [
     "BackendSearchResponse",
     "InMemoryAdapter",
     "SearchAdapter",
+    # Models
+    "ClassificationResult",
+    "ExtractionResult",
+    "ModelProvider",
+    # Orchestration
+    "QueryAnalyzer",
     # Telemetry
     "Tracer",
     # Exceptions
