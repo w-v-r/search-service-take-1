@@ -16,11 +16,6 @@ class SearchContext:
 
     Accumulates state across iterations. This is an internal model
     that the developer never sees through the SDK surface.
-
-    The trace is NOT part of the context. Telemetry (Tracer / SearchTrace)
-    runs as a parallel data capture alongside the pipeline -- the harness
-    never reads from the trace to make decisions. The orchestrator holds
-    the tracer separately and passes it alongside the context.
     """
 
     index_config: IndexConfig
