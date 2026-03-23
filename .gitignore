@@ -49,6 +49,12 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
+# Ruff
+.ruff_cache/
+
+# Python version
+.python-version
+
 # Environments
 .env
 .env.local

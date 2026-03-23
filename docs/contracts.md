@@ -675,12 +675,13 @@ class PlannedBranch:
 
 Mutable runtime state passed through the orchestration pipeline. Accumulates state across iterations. Implemented as a `@dataclass`, not a `BaseModel`.
 
+**The trace is NOT part of SearchContext.** Telemetry (`Tracer` / `SearchTrace`) runs as a parallel data capture alongside the pipeline. The harness never reads from the trace to make decisions. The orchestrator holds the tracer separately and passes it alongside the context. This keeps the trace as a pure observability layer (analogous to Langsmith / Langfuse) that can be reviewed retrospectively without coupling it to runtime search behaviour.
+
 ```python
 @dataclass
 class SearchContext:
     index_config: IndexConfig
     interaction_mode: InteractionMode
-    trace: SearchTrace
     policy: SearchPolicy
 
     iterations_used: int = 0

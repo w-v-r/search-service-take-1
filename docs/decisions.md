@@ -60,11 +60,11 @@ This document captures key architectural decisions baked into v0 and their ratio
 
 **Rationale:** Tracing is one of the core product advantages. Developers need to understand why a search produced its results, what the system tried, and where it stopped. This makes the product debuggable and trustworthy, which is critical for adoption.
 
-## 7. Pydantic for All Data Models
+## 7. Pydantic for Public Contracts, Dataclasses for Internals
 
-**Decision:** Use Pydantic v2 models for all requests, responses, configs, and internal data structures.
+**Decision:** Use Pydantic v2 models for all public SDK contracts (requests, responses, configs, traces). Use plain `@dataclass` types for internal orchestration state (see Decision #10).
 
-**Rationale:** Pydantic provides runtime validation, serialization, and strong typing. It aligns with modern Python SDK conventions and makes the API self-documenting. Using a single modeling approach across the entire codebase reduces cognitive load.
+**Rationale:** Pydantic provides runtime validation, serialization, and strong typing. It aligns with modern Python SDK conventions and makes the public API self-documenting. Internal orchestration models use dataclasses because they need to evolve freely without the overhead of being treated as stable, serializable contracts.
 
 ## 8. Query Types Are Developer-Defined, Not System-Defined
 
