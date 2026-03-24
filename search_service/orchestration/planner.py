@@ -8,11 +8,11 @@ This is not an agent. The planner makes a structured choice from a small
 set of allowed actions based on concrete context: query analysis, budget
 state, and accumulated results.
 
-Action priority (highest to lowest value when budget is limited):
-1. Apply extracted filters (search_with_filters)
-2. Branch (multi_branch) -- original query + filter-augmented version
-3. Direct search (direct_search) -- baseline without extracted structure
-4. Needs clarification (needs_clarification) -- escalate to the user
+Action priority (AITL, highest to lowest when budget is limited):
+1. Apply extracted filters (search_with_filters / multi_branch with filters)
+2. Branch with reformulated primary subject (multi_branch or reformulated_search)
+3. Direct search (direct_search) -- baseline retrieval
+4. Escalate to needs_input (needs_clarification) -- ambiguity, stuck, or exhausted
 """
 
 from __future__ import annotations
@@ -22,6 +22,12 @@ from typing import Any
 from search_service._internal.context import SearchContext
 from search_service._internal.enums import PlanAction
 from search_service._internal.plan import PlannedBranch, SearchPlan
+from search_service.orchestration.aitl_context import (
+    build_aitl_context,
+    can_reformulate_branch,
+    has_equivalent_original_branch,
+    would_repeat_redundant_direct,
+)
 from search_service.schemas.enums import AmbiguityLevel, BranchKind, InteractionMode
 from search_service.schemas.trace import SearchTrace
 from search_service.telemetry import events
@@ -48,7 +54,7 @@ def create_plan(
         SearchPlan with action type and branches to execute.
     """
     plan = _select_action(query, context)
-    _record_planning_step(plan, context, tracer, trace)
+    _record_planning_step(plan, context, tracer, trace, query=query)
     return plan
 
 
@@ -62,6 +68,12 @@ def _select_action(query: str, context: SearchContext) -> SearchPlan:
 
     if _should_clarify(context):
         return _plan_needs_clarification(query, context)
+
+    if can_reformulate_branch(context):
+        return _plan_reformulation_branch(query, context)
+
+    if would_repeat_redundant_direct(context, query):
+        return _plan_stuck_escalation(query, context)
 
     return _plan_direct_search(query)
 
@@ -164,6 +176,65 @@ def _plan_filter_application(query: str, context: SearchContext) -> SearchPlan:
     )
 
 
+def _plan_reformulation_branch(query: str, context: SearchContext) -> SearchPlan:
+    """Original query alongside a reformulated branch using primary_subject (AITL)."""
+    analysis = context.query_analysis
+    if analysis is None or not analysis.primary_subject:
+        return _plan_direct_search(query)
+
+    subject = analysis.primary_subject.strip()
+    has_original = has_equivalent_original_branch(context, query)
+
+    if not has_original:
+        return SearchPlan(
+            action=PlanAction.multi_branch,
+            branches=[
+                PlannedBranch(
+                    kind=BranchKind.original_query,
+                    query=query,
+                    filters={},
+                ),
+                PlannedBranch(
+                    kind=BranchKind.reformulated,
+                    query=subject,
+                    filters={},
+                ),
+            ],
+            reasoning=(
+                "Multi-branch AITL: original query alongside reformulated "
+                f"primary subject ({subject!r})."
+            ),
+        )
+
+    return SearchPlan(
+        action=PlanAction.reformulated_search,
+        branches=[
+            PlannedBranch(
+                kind=BranchKind.reformulated,
+                query=subject,
+                filters={},
+            ),
+        ],
+        reasoning=(
+            "AITL: add reformulated branch using primary subject "
+            f"({subject!r}); original query already executed in a prior step."
+        ),
+    )
+
+
+def _plan_stuck_escalation(query: str, context: SearchContext) -> SearchPlan:
+    """AITL cannot take a new non-redundant step; fall back to HITL-style follow-up."""
+    return SearchPlan(
+        action=PlanAction.needs_clarification,
+        branches=[],
+        reasoning=(
+            "AITL: baseline search would repeat without new structure. "
+            "No further autonomous actions available within policy. "
+            f"Escalating to structured follow-up (query={query!r})."
+        ),
+    )
+
+
 def _plan_needs_clarification(query: str, context: SearchContext) -> SearchPlan:
     """Signal that clarification is needed before proceeding."""
     analysis = context.query_analysis
@@ -186,6 +257,8 @@ def _record_planning_step(
     context: SearchContext,
     tracer: Tracer,
     trace: SearchTrace,
+    *,
+    query: str,
 ) -> None:
     """Record a planning trace step with budget state."""
     tracer.record(
@@ -199,5 +272,6 @@ def _record_planning_step(
             reasoning=plan.reasoning,
             iterations_remaining=context.iterations_remaining,
             branches_remaining=context.branches_remaining,
+            aitl_context=build_aitl_context(context, query=query),
         ),
     )

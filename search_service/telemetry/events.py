@@ -104,6 +104,7 @@ def planning(
     reasoning: str | None = None,
     iterations_remaining: int | None = None,
     branches_remaining: int | None = None,
+    aitl_context: dict[str, Any] | None = None,
     latency_ms: float | None = None,
     model_used: str | None = None,
 ) -> TraceStep:
@@ -116,6 +117,8 @@ def planning(
         payload["iterations_remaining"] = iterations_remaining
     if branches_remaining is not None:
         payload["branches_remaining"] = branches_remaining
+    if aitl_context is not None:
+        payload["aitl_context"] = aitl_context
     return TraceStep(
         step_type=TraceStepType.planning,
         payload=payload,
@@ -155,6 +158,7 @@ def evaluation(
     *,
     decision_reason: str | None = None,
     result_count: int | None = None,
+    aitl_context: dict[str, Any] | None = None,
     latency_ms: float | None = None,
     model_used: str | None = None,
 ) -> TraceStep:
@@ -166,6 +170,8 @@ def evaluation(
         payload["decision_reason"] = decision_reason
     if result_count is not None:
         payload["result_count"] = result_count
+    if aitl_context is not None:
+        payload["aitl_context"] = aitl_context
     return TraceStep(
         step_type=TraceStepType.evaluation,
         payload=payload,

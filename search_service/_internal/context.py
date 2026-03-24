@@ -30,6 +30,8 @@ class SearchContext:
     actions_taken: list[str] = field(default_factory=list)
     unapplied_filters: dict[str, Any] = field(default_factory=dict)
     user_input: dict[str, Any] = field(default_factory=dict)
+    reformulation_attempted: bool = False
+    """Set after a reformulated branch is executed; prevents duplicate reformulation."""
 
     @property
     def iterations_remaining(self) -> int:

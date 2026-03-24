@@ -17,6 +17,11 @@ from __future__ import annotations
 
 from search_service._internal.context import NextAction, SearchContext
 from search_service._internal.enums import EvaluatorAction
+from search_service.orchestration.aitl_context import (
+    build_aitl_context,
+    has_actionable_next_step,
+    resolve_raw_query,
+)
 from search_service.schemas.enums import AmbiguityLevel, InteractionMode
 from search_service.schemas.result import BranchResult
 from search_service.schemas.trace import SearchTrace
@@ -48,7 +53,9 @@ def evaluate_results(
             branch.confidence = confidence
 
     next_action = _decide(confidence, context)
-    _record_evaluation_step(confidence, next_action, branch_results, tracer, trace)
+    _record_evaluation_step(
+        confidence, next_action, branch_results, context, tracer, trace,
+    )
     return next_action
 
 
@@ -124,7 +131,8 @@ def _decide(confidence: float, context: SearchContext) -> NextAction:
                 ),
             )
 
-    if _has_actionable_next_step(context):
+    query = resolve_raw_query(context)
+    if has_actionable_next_step(context, query):
         return NextAction(
             action=EvaluatorAction.iterate,
             reason=(
@@ -161,16 +169,6 @@ def _is_materially_ambiguous(context: SearchContext) -> bool:
     }
 
 
-def _has_actionable_next_step(context: SearchContext) -> bool:
-    """Check if there is something useful the planner can do next.
-
-    For v0, the only actionable step is applying unapplied filters.
-    Branching without new structure (reformulation, re-extraction)
-    is not useful and will be enabled in later steps.
-    """
-    return bool(context.unapplied_filters)
-
-
 def _ambiguity_label(context: SearchContext) -> str:
     if context.query_analysis is not None:
         return context.query_analysis.ambiguity.value
@@ -181,11 +179,13 @@ def _record_evaluation_step(
     confidence: float,
     next_action: NextAction,
     branch_results: list[BranchResult],
+    context: SearchContext,
     tracer: Tracer,
     trace: SearchTrace,
 ) -> None:
     """Record an evaluation trace step."""
     total_results = sum(len(b.results) for b in branch_results)
+    q = resolve_raw_query(context)
     tracer.record(
         trace,
         events.evaluation(
@@ -193,5 +193,6 @@ def _record_evaluation_step(
             action_chosen=next_action.action.value,
             decision_reason=next_action.reason,
             result_count=total_results,
+            aitl_context=build_aitl_context(context, query=q),
         ),
     )

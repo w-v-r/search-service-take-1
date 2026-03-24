@@ -11,6 +11,7 @@ class PlanAction(StrEnum):
     direct_search = "direct_search"
     search_with_filters = "search_with_filters"
     multi_branch = "multi_branch"
+    reformulated_search = "reformulated_search"
     needs_clarification = "needs_clarification"
 
 

@@ -356,6 +356,17 @@ def _run_orchestration_loop(
     while context.iterations_used < config.policy.max_iterations:
         context.iterations_used += 1
 
+        if mode == InteractionMode.aitl:
+            tracer.record(
+                trace,
+                events.budget_check(
+                    iterations_remaining=context.iterations_remaining,
+                    branches_remaining=context.branches_remaining,
+                    budget_exhausted=context.budget_exhausted,
+                    at_final_iteration=context.at_final_iteration,
+                ),
+            )
+
         plan = create_plan(query, context, tracer, trace)
 
         if plan.action == PlanAction.needs_clarification:
@@ -371,6 +382,19 @@ def _run_orchestration_loop(
             trace=trace,
         )
         context.branches.extend(branch_results)
+
+        if len(branch_results) > 1:
+            tracer.record(
+                trace,
+                events.branch_merge(
+                    branch_count=len(branch_results),
+                    merged_result_count=sum(len(b.results) for b in branch_results),
+                    strategy="per_branch_then_dedupe",
+                ),
+            )
+
+        if any(b.kind == BranchKind.reformulated for b in plan.branches):
+            context.reformulation_attempted = True
 
         if plan.action in (
             PlanAction.search_with_filters,

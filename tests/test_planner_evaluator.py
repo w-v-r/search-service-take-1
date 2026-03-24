@@ -483,6 +483,47 @@ class TestPlannerMultiBranch:
         assert "multi-branch" in plan.reasoning.lower()
 
 
+class TestPlannerReformulation:
+    """AITL reformulation: original query alongside primary_subject branch."""
+
+    def test_aitl_multi_branch_reformulation(self) -> None:
+        analysis = _make_analysis(
+            ambiguity=AmbiguityLevel.none,
+            primary_subject="Telstra Corporation",
+        )
+        tracer = Tracer()
+        trace = _start_trace(tracer)
+        ctx = _make_context(
+            interaction_mode=InteractionMode.aitl,
+            query_analysis=analysis,
+            max_iterations=3,
+            max_branches=2,
+        )
+
+        plan = create_plan("test query", ctx, tracer, trace)
+
+        assert plan.action == PlanAction.multi_branch
+        kinds = {b.kind for b in plan.branches}
+        assert BranchKind.original_query in kinds
+        assert BranchKind.reformulated in kinds
+
+    def test_hitl_ignores_reformulation_for_direct_search(self) -> None:
+        analysis = _make_analysis(
+            ambiguity=AmbiguityLevel.none,
+            primary_subject="Telstra",
+        )
+        tracer = Tracer()
+        trace = _start_trace(tracer)
+        ctx = _make_context(
+            interaction_mode=InteractionMode.hitl,
+            query_analysis=analysis,
+        )
+
+        plan = create_plan("test query", ctx, tracer, trace)
+
+        assert plan.action == PlanAction.direct_search
+
+
 class TestPlannerTracing:
     """Planning step is recorded in the trace."""
 
@@ -510,6 +551,23 @@ class TestPlannerTracing:
         payload = planning_steps[0].payload
         assert payload["iterations_remaining"] == 2
         assert "branches_remaining" in payload
+
+    def test_planning_payload_includes_aitl_context(self) -> None:
+        tracer = Tracer()
+        trace = _start_trace(tracer)
+        ctx = _make_context()
+
+        create_plan("test", ctx, tracer, trace)
+
+        planning_steps = [
+            s for s in trace.steps if s.step_type == TraceStepType.planning
+        ]
+        payload = planning_steps[0].payload
+        assert "aitl_context" in payload
+        ac = payload["aitl_context"]
+        assert "instructions" in ac
+        assert "self_knowledge" in ac
+        assert "problem_state" in ac
 
 
 # ===========================================================================
@@ -686,6 +744,25 @@ class TestEvaluatorIterate:
             interaction_mode=InteractionMode.aitl,
             query_analysis=analysis,
             unapplied_filters={"country": "AU"},
+            stop_threshold=0.99,
+        )
+        results = _make_branch_results(result_count=3)
+
+        action = evaluate_results(results, ctx, tracer, trace)
+
+        assert action.action == EvaluatorAction.iterate
+        assert "actionable" in action.reason.lower()
+
+    def test_iterate_when_reformulation_available(self) -> None:
+        tracer = Tracer()
+        trace = _start_trace(tracer)
+        analysis = _make_analysis(
+            ambiguity=AmbiguityLevel.none,
+            primary_subject="Telstra",
+        )
+        ctx = _make_context(
+            interaction_mode=InteractionMode.aitl,
+            query_analysis=analysis,
             stop_threshold=0.99,
         )
         results = _make_branch_results(result_count=3)
@@ -980,6 +1057,30 @@ class TestOrchestratedPipelineAITL:
             b.kind == BranchKind.filter_augmented for b in result.branches
         )
         assert has_filter_branch
+
+    def test_aitl_reformulation_branch_in_history(self) -> None:
+        provider = StubModelProvider(
+            extraction=ExtractionResult(
+                ambiguity=AmbiguityLevel.none,
+                primary_subject="Telstra",
+            ),
+        )
+        analyzer = QueryAnalyzer(provider)
+        config = _make_config(
+            interaction_mode=InteractionMode.aitl,
+            max_iterations=1,
+            max_branches=2,
+            stop_threshold=0.99,
+        )
+        client = SearchClient()
+        index = client.indexes.create(config, analyzer=analyzer)
+
+        result = index.search("major telco in AU")
+
+        assert result.status == SearchStatus.completed
+        assert any(
+            b.kind == BranchKind.reformulated for b in result.branches
+        )
 
 
 class TestOrchestratedPipelineTracing:
