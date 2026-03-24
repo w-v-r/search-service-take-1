@@ -14,6 +14,7 @@ from search_service.exceptions import (
 )
 from search_service.indexes.base import SearchIndex
 from search_service.models.llm import ClassificationResult, ExtractionResult, ModelProvider
+from search_service.models.mercury import MercuryModelProvider
 from search_service.orchestration.analyzer import QueryAnalyzer
 from search_service.schemas.config import ConfidenceThresholds, IndexConfig, SearchPolicy
 from search_service.schemas.enums import (
@@ -63,6 +64,7 @@ __all__ = [
     # Models
     "ClassificationResult",
     "ExtractionResult",
+    "MercuryModelProvider",
     "ModelProvider",
     # Orchestration
     "QueryAnalyzer",

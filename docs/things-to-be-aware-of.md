@@ -31,3 +31,17 @@
 - **`branch_merge` trace** is emitted whenever a plan runs **more than one branch**. It does **not** mean a ranked merge of hits—result deduplication still happens in **`_dedup_results`**. The name can be read as “parallel branches executed,” not “merged index.”
 
 - **`assess_confidence` is still heuristic:** Stop / escalate / iterate depend on that v0 heuristic. Until it is calibrated on real traffic, expect **early stop**, **extra escalation**, or **iterate** decisions that do not match product intuition.
+
+### Mercury 2 (`MercuryModelProvider`)
+
+- **Structured output:** Classification and extraction rely on the model following “JSON only” in plain text. If Inception exposes **`response_format` / JSON mode** or schema-enforced responses, adopting that would reduce parse failures and odd edge cases without changing public types.
+
+- **Parsing edge cases:** The client strips code fences, uses **`JSONDecoder.raw_decode`**, then a **balanced-brace** fallback. That can still mis-parse if the model emits `{` / `}` inside string values in unusual ways. If flaky parses show up in production, prefer API-level JSON or a small repair path over more ad-hoc parsing.
+
+- **Operations:** The OpenAI client has **timeouts and retries**, but you still want visibility into **latency**, **rate limits**, and rates of **empty classification/extraction** (prompt drift, API issues, or bad inputs).
+
+- **CI vs live API:** Integration tests against the real API are **opt-in** (`INCEPTION_API_KEY`, `pytest -m integration`). CI will not catch **breaking API changes** unless you add scheduled jobs with a key, contract tests, or recorded HTTP fixtures.
+
+- **SDK wiring:** `MercuryModelProvider` is passed into **`QueryAnalyzer`**; **`SearchClient`** does not yet assemble a Mercury-backed analyzer automatically—that remains a separate product/UX decision.
+
+- **Static typing:** Full-package **`mypy`** may still report issues unrelated to Mercury (e.g. **`schemas/config.py`**). Fix those for strict CI when you tighten typing.
