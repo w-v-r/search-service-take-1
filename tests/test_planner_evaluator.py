@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from pydantic import BaseModel
 
 from search_service._internal.context import NextAction, SearchContext
@@ -19,6 +20,7 @@ from search_service._internal.enums import EvaluatorAction, PlanAction
 from search_service._internal.plan import SearchPlan
 from search_service.adapters.in_memory import InMemoryAdapter
 from search_service.client import SearchClient
+from search_service.exceptions import SearchExecutionError, TraceNotFoundError
 from search_service.models.llm import ClassificationResult, ExtractionResult
 from search_service.orchestration.analyzer import QueryAnalyzer
 from search_service.orchestration.evaluator import assess_confidence, evaluate_results
@@ -879,6 +881,76 @@ class TestOrchestratedPipelineHITL:
         assert result.status == SearchStatus.needs_input
         assert result.message is not None
         assert "additional" in result.message.lower() or "information" in result.message.lower()
+
+
+class TestHITLFollowUpAndContinuation:
+    """Structured follow_up and continue_search after needs_input."""
+
+    def test_needs_input_includes_follow_up_schema(self) -> None:
+        provider = StubModelProvider(
+            extraction=ExtractionResult(
+                ambiguity=AmbiguityLevel.high,
+                missing_fields=["country"],
+            ),
+        )
+        analyzer = QueryAnalyzer(provider)
+        config = _make_config(
+            interaction_mode=InteractionMode.hitl,
+            canonical_filters={"country": ["AU", "US", "UK"]},
+        )
+        client = SearchClient()
+        index = client.indexes.create(config, analyzer=analyzer)
+
+        result = index.search("Telstra")
+
+        assert result.status == SearchStatus.needs_input
+        assert result.follow_up is not None
+        assert result.follow_up.input_schema["type"] == "object"
+        assert "country" in result.follow_up.input_schema["properties"]
+        assert "country" in result.follow_up.input_schema["required"]
+
+    def test_continue_search_resolves_and_completes(self) -> None:
+        provider = StubModelProvider(
+            extraction=ExtractionResult(
+                ambiguity=AmbiguityLevel.high,
+                missing_fields=["country"],
+            ),
+        )
+        analyzer = QueryAnalyzer(provider)
+        config = _make_config(
+            interaction_mode=InteractionMode.hitl,
+            canonical_filters={"country": ["AU", "US", "UK"]},
+        )
+        client = SearchClient()
+        index = client.indexes.create(config, analyzer=analyzer)
+
+        first = index.search("Telstra")
+        assert first.status == SearchStatus.needs_input
+        assert first.follow_up is not None
+
+        second = index.continue_search(first.trace_id, {"country": "AU"})
+        assert second.status == SearchStatus.completed
+        assert second.trace_id == first.trace_id
+        assert len(second.results) >= 1
+        assert second.results[0].title == "Telstra Corporation"
+
+    def test_continue_search_unknown_trace_raises(self) -> None:
+        provider = StubModelProvider()
+        analyzer = QueryAnalyzer(provider)
+        config = _make_config(interaction_mode=InteractionMode.hitl)
+        client = SearchClient()
+        index = client.indexes.create(config, analyzer=analyzer)
+
+        with pytest.raises(TraceNotFoundError):
+            index.continue_search("nonexistent-trace-id", {"country": "AU"})
+
+    def test_continue_search_without_analyzer_raises(self) -> None:
+        config = _make_config(interaction_mode=InteractionMode.hitl)
+        client = SearchClient()
+        index = client.indexes.create(config)
+
+        with pytest.raises(SearchExecutionError):
+            index.continue_search("any", {"country": "AU"})
 
 
 class TestOrchestratedPipelineAITL:
